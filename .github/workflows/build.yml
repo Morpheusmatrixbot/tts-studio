@@ -1,0 +1,204 @@
+name: Build installers
+
+# Windows executables cannot be produced on macOS (PyInstaller does not
+# cross-compile), so each installer is built on its own runner and the
+# artifacts are collected into one release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run tests
+        run: python -m pytest tests -v
+
+  macos:
+    name: macOS DMG (${{ matrix.arch }})
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14      # Apple Silicon
+            arch: arm64
+          - runner: macos-13      # Intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Generate icons
+        run: python packaging/make_icon.py
+
+      - name: Build app
+        run: pyinstaller packaging/ttsstudio.spec --noconfirm
+
+      - name: Smoke-test the built app
+        run: |
+          export TTS_STUDIO_HOME="$RUNNER_TEMP/ttsdata"
+          "dist/TTS Studio.app/Contents/MacOS/TTS Studio" &
+          APP_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf -m 2 http://127.0.0.1:8766/api/health > /dev/null; then
+              echo "app responded"
+              curl -s http://127.0.0.1:8766/api/bootstrap | python -c "import json,sys; d=json.load(sys.stdin); print('platform:', d['platform'])"
+              kill $APP_PID || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "app did not start" >&2
+          cat "$HOME/Library/Logs/TTS Studio/startup.log" 2>/dev/null || true
+          kill $APP_PID || true
+          exit 1
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          # Tags give the real version; branch builds are dev snapshots.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build DMG
+        run: bash packaging/make_dmg.sh "${{ steps.version.outputs.value }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Generate icons
+        run: python packaging/make_icon.py
+
+      - name: Build executable
+        run: pyinstaller packaging/ttsstudio.spec --noconfirm
+
+      - name: Smoke-test the executable
+        shell: pwsh
+        run: |
+          $env:TTS_STUDIO_HOME = "$env:RUNNER_TEMP\ttsdata"
+          $proc = Start-Process -FilePath "dist\TTSStudio.exe" -PassThru
+          $ok = $false
+          foreach ($i in 1..30) {
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:8766/api/health" -TimeoutSec 2 -UseBasicParsing
+              if ($r.StatusCode -eq 200) {
+                Write-Host "app responded: $($r.Content)"
+                $b = Invoke-WebRequest -Uri "http://127.0.0.1:8766/api/bootstrap" -UseBasicParsing
+                Write-Host ($b.Content | ConvertFrom-Json).platform
+                $ok = $true
+                break
+              }
+            } catch { Start-Sleep -Seconds 2 }
+          }
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) {
+            Get-Content "$env:LOCALAPPDATA\TTS Studio\logs\startup.log" -ErrorAction SilentlyContinue
+            throw "app did not start"
+          }
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          # Tags give the real version; branch builds are dev snapshots.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Inno Setup not found; installing via Chocolatey"
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.value }}" "packaging\windows\installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - name: Stage portable executable
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.value }}"
+          Compress-Archive -Path "dist\TTSStudio.exe" -DestinationPath "dist\TTS-Studio-$v-Windows-portable.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/*Setup.exe
+            dist/*portable.zip
+          if-no-files-found: error
+
+  release:
+    name: Attach to release
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: List artifacts
+        run: find artifacts -type f -printf '%p  %s bytes\n'
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: false

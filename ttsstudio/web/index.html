@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TTS Studio</title>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🎙</span>
+    <div>
+      <h1 data-i18n="app.title">TTS Studio</h1>
+      <p class="tagline" data-i18n="app.tagline"></p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="narrate" data-i18n="tab.narrate"></button>
+      <button class="tab" data-tab="engines" data-i18n="tab.engines"></button>
+      <button class="tab" data-tab="settings" data-i18n="tab.settings"></button>
+    </nav>
+    <select id="langSwitch" class="lang-switch" aria-label="Language">
+      <option value="en">English</option>
+      <option value="ru">Русский</option>
+    </select>
+  </div>
+</header>
+
+<!-- ================= NARRATE ================= -->
+<main id="view-narrate" class="view active">
+  <div class="col">
+    <section class="panel">
+      <h2 data-i18n="text.heading"></h2>
+      <div class="segmented">
+        <button class="seg active" data-source="paste" data-i18n="text.paste"></button>
+        <button class="seg" data-source="upload" data-i18n="text.upload"></button>
+      </div>
+      <div id="sourcePaste">
+        <textarea id="pasteText" data-i18n-placeholder="text.placeholder"></textarea>
+      </div>
+      <div id="sourceUpload" hidden>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".txt,.md,.epub,.pdf" hidden />
+          <span id="dropzoneLabel" data-i18n="text.drop"></span>
+        </label>
+        <div class="doc-preview" id="docPreview" hidden></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="panel">
+      <h2 data-i18n="voice.heading"></h2>
+      <div class="field">
+        <label data-i18n="voice.engine"></label>
+        <select id="engineSelect"></select>
+        <p class="hint" id="engineSummary"></p>
+      </div>
+
+      <div class="notice warn" id="engineBlocked" hidden>
+        <span id="engineBlockedText"></span>
+        <button class="btn tiny" id="engineBlockedAction"></button>
+      </div>
+
+      <!-- Kokoro -->
+      <div class="engine-panel" data-engine="kokoro" hidden>
+        <div class="field-row">
+          <div class="field">
+            <label data-i18n="voice.language"></label>
+            <select id="kokoroLang"></select>
+          </div>
+          <div class="field">
+            <label data-i18n="voice.voice"></label>
+            <select id="kokoroVoice"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label><span data-i18n="voice.speed"></span> <b id="kokoroSpeedVal">1.00</b></label>
+          <input type="range" id="kokoroSpeed" min="0.5" max="1.5" step="0.01" value="1.0" />
+        </div>
+      </div>
+
+      <!-- Chatterbox -->
+      <div class="engine-panel" data-engine="chatterbox" hidden>
+        <div class="field">
+          <label data-i18n="voice.language"></label>
+          <select id="cbLang"></select>
+        </div>
+        <div class="field">
+          <label data-i18n="voice.sample"></label>
+          <select id="cbSample"></select>
+          <p class="hint" id="cbSampleEmpty" data-i18n="voice.sampleNone" hidden></p>
+        </div>
+        <label class="dropzone small" id="sampleZone">
+          <input type="file" id="sampleInput" accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg" hidden />
+          <span id="sampleLabel" data-i18n="voice.sampleUpload"></span>
+        </label>
+        <details class="advanced">
+          <summary data-i18n="voice.advanced"></summary>
+          <div class="field-row">
+            <div class="field">
+              <label><span data-i18n="voice.temperature"></span> <b id="cbTempVal">0.55</b></label>
+              <input type="range" id="cbTemp" min="0.2" max="0.9" step="0.01" value="0.55" />
+            </div>
+            <div class="field">
+              <label><span data-i18n="voice.repetition"></span> <b id="cbRepVal">1.65</b></label>
+              <input type="range" id="cbRep" min="1.0" max="2.2" step="0.01" value="1.65" />
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Edge -->
+      <div class="engine-panel" data-engine="edge" hidden>
+        <div class="field-row">
+          <div class="field">
+            <label data-i18n="voice.language"></label>
+            <select id="edgeLocale"></select>
+          </div>
+          <div class="field">
+            <label data-i18n="voice.voice"></label>
+            <select id="edgeVoice"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ElevenLabs -->
+      <div class="engine-panel" data-engine="elevenlabs" hidden>
+        <div class="field-row">
+          <div class="field">
+            <label data-i18n="voice.model"></label>
+            <select id="elModel"></select>
+          </div>
+          <div class="field">
+            <label data-i18n="voice.voice"></label>
+            <select id="elVoice"></select>
+          </div>
+        </div>
+        <button class="btn ghost tiny" id="elLoadVoices" data-i18n="voice.fetchVoices"></button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 data-i18n="output.heading"></h2>
+      <div class="field">
+        <label data-i18n="output.folder"></label>
+        <input type="text" id="outputDir" />
+        <p class="hint" data-i18n="output.hint"></p>
+      </div>
+      <div class="field">
+        <label data-i18n="output.name"></label>
+        <input type="text" id="outputName" data-i18n-placeholder="output.namePlaceholder" />
+      </div>
+      <details class="advanced">
+        <summary data-i18n="voice.advanced"></summary>
+        <div class="field">
+          <label><span data-i18n="voice.chunkWords"></span> <b id="chunkVal">55</b></label>
+          <input type="range" id="chunkWords" min="20" max="90" step="5" value="55" />
+          <p class="hint" data-i18n="voice.chunkHint"></p>
+        </div>
+        <label class="check"><input type="checkbox" id="keepChunks" /> <span data-i18n="output.keepChunks"></span></label>
+      </details>
+      <div class="actions">
+        <button class="btn primary" id="startBtn" data-i18n="output.generate"></button>
+        <button class="btn danger" id="cancelBtn" data-i18n="output.cancel" hidden></button>
+      </div>
+    </section>
+  </div>
+
+  <div class="col full">
+    <section class="panel" id="progressPanel" hidden>
+      <h2 data-i18n="progress.heading"></h2>
+      <div class="progress-head">
+        <span class="state" id="progressState"></span>
+        <span class="pct" id="progressPct">0%</span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="progressBar"></div></div>
+      <div class="stats">
+        <div class="stat"><span class="k" id="statChunksLabel"></span><span class="v" id="statChunks">—</span></div>
+        <div class="stat"><span class="k" data-i18n="progress.elapsed"></span><span class="v" id="statElapsed">—</span></div>
+        <div class="stat"><span class="k" data-i18n="progress.remaining"></span><span class="v" id="statEta">—</span></div>
+        <div class="stat"><span class="k" data-i18n="progress.total"></span><span class="v" id="statTotal">—</span></div>
+        <div class="stat"><span class="k" data-i18n="progress.audio"></span><span class="v" id="statAudio">—</span></div>
+      </div>
+      <pre class="log" id="progressLog"></pre>
+    </section>
+
+    <section class="panel" id="resultPanel" hidden>
+      <h2 data-i18n="result.heading"></h2>
+      <div id="resultBody"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ================= ENGINES ================= -->
+<main id="view-engines" class="view">
+  <div class="col full">
+    <section class="panel">
+      <h2 data-i18n="engines.heading"></h2>
+      <p class="hint" data-i18n="engines.intro"></p>
+      <p class="hint"><span data-i18n="engines.platform"></span>: <b id="platformLabel"></b></p>
+      <div class="notice" data-i18n="engines.installHint"></div>
+      <div id="engineCards" class="engine-cards"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ================= SETTINGS ================= -->
+<main id="view-settings" class="view">
+  <div class="col full">
+    <section class="panel narrow">
+      <h2 data-i18n="settings.heading"></h2>
+      <div class="field">
+        <label data-i18n="settings.language"></label>
+        <select id="langSelect">
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+        </select>
+      </div>
+      <hr />
+      <div class="field">
+        <label data-i18n="settings.elevenlabs"></label>
+        <p class="hint" data-i18n="settings.elevenlabsHint"></p>
+        <a class="link" id="elKeyLink" target="_blank" rel="noreferrer noopener" data-i18n="settings.elevenlabsGet"></a>
+        <div class="field-row tight">
+          <input type="password" id="elKeyInput" data-i18n-placeholder="settings.keyPlaceholder" />
+          <button class="btn" id="elKeySave" data-i18n="settings.keySave"></button>
+        </div>
+        <p class="hint" id="elKeyStatus"></p>
+      </div>
+      <hr />
+      <div class="field">
+        <label data-i18n="settings.dataFolder"></label>
+        <code class="path" id="dataDir"></code>
+      </div>
+      <div class="field">
+        <label data-i18n="settings.about"></label>
+        <p class="hint" data-i18n="settings.aboutText"></p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+[project]
+name = "tts-studio"
+version = "1.0.0"
+description = "Turn text and books into narrated audio, locally"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy>=1.26",
+    "soundfile>=0.13.0",
+    "edge-tts>=7.0.0",
+    "pypdf>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Morpheusmatrixbot/tts-studio"
+Issues = "https://github.com/Morpheusmatrixbot/tts-studio/issues"
+
+[project.scripts]
+tts-studio = "ttsstudio.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ttsstudio*"]
+
+[tool.setuptools.package-data]
+ttsstudio = ["web/**/*", "workers/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

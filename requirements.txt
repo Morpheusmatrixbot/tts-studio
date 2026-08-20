@@ -1,0 +1,7 @@
+# Runtime dependencies for the app shell.
+# Heavy TTS engines are NOT here — they are installed on demand into their own
+# virtualenvs by ttsstudio/runtime.py, per platform.
+numpy>=1.26
+soundfile>=0.13.0
+edge-tts>=7.0.0
+pypdf>=5.0.0

@@ -14,7 +14,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
 APP_NAME = "TTS Studio"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 datas = [
     (str(ROOT / "ttsstudio" / "web"), "ttsstudio/web"),

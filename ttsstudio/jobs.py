@@ -314,53 +314,57 @@ def _run_narration(job: Job, payload: dict) -> None:
     settings.save({"output_dir": str(out_root), "last_engine": cfg["engine"]})
 
     chapters: list[dict] = []
-    for section in plan:
-        if job.cancel:
-            break
-        section_dir = chunks_dir / section["id"]
-        section_dir.mkdir(parents=True, exist_ok=True)
-        written: list[Path] = []
-        gaps: list[float] = []
-
-        for index, (text, new_paragraph) in enumerate(section["chunks"], start=1):
+    # One session for the whole job: local engines load their model once here
+    # rather than once per chunk, which is the difference between minutes and
+    # hours on a full-length book.
+    with synth.SynthSession(cfg) as session:
+        for section in plan:
             if job.cancel:
                 break
-            started = time.time()
-            target = section_dir / f"{index:04d}"
-            produced = synth.synth_chunk(text, target, cfg)
-            took = time.time() - started
+            section_dir = chunks_dir / section["id"]
+            section_dir.mkdir(parents=True, exist_ok=True)
+            written: list[Path] = []
+            gaps: list[float] = []
 
-            written.append(produced)
-            gaps.append(audio.GAP_PARAGRAPH if new_paragraph else audio.GAP_SENTENCE)
-            job.done_chunks += 1
-            job.done_chars += len(text)
-            job.audio_seconds += audio.duration_of(produced)
-            # The first chunk also paid for model loading — excluding it keeps
-            # the ETA from starting out wildly pessimistic.
-            if job.done_chunks > 1 or job.total_chunks == 1:
-                job._samples.append((len(text), max(took, 0.01)))
+            for index, (text, new_paragraph) in enumerate(section["chunks"], start=1):
+                if job.cancel:
+                    break
+                started = time.time()
+                target = section_dir / f"{index:04d}"
+                produced = session.synth(text, target)
+                took = time.time() - started
 
-            if job.done_chunks % 5 == 0 or job.done_chunks == job.total_chunks:
-                eta = job.eta_seconds()
-                job.add_log(
-                    f"{job.done_chunks}/{job.total_chunks} chunks · {job.percent():.0f}%"
-                    + (f" · ~{_fmt(eta)} left" if eta else "")
-                )
+                written.append(produced)
+                gaps.append(audio.GAP_PARAGRAPH if new_paragraph else audio.GAP_SENTENCE)
+                job.done_chunks += 1
+                job.done_chars += len(text)
+                job.audio_seconds += audio.duration_of(produced)
+                # The first chunk also paid for model loading — excluding it
+                # keeps the ETA from starting out wildly pessimistic.
+                if job.done_chunks > 1 or job.total_chunks == 1:
+                    job._samples.append((len(text), max(took, 0.01)))
 
-        if not written:
-            continue
-        merged, sr = audio.concat(written, gaps)
-        chapter_path = chapters_dir / f"{section['id']}.wav"
-        audio.write(chapter_path, merged, sr)
-        chapters.append(
-            {
-                "id": section["id"],
-                "heading": section.get("heading") or section["id"],
-                "path": str(chapter_path),
-                "seconds": round(len(merged) / sr, 1),
-            }
-        )
-        job.add_log(f"Finished {section['id']} ({_fmt(len(merged) / sr)})")
+                if job.done_chunks % 5 == 0 or job.done_chunks == job.total_chunks:
+                    eta = job.eta_seconds()
+                    job.add_log(
+                        f"{job.done_chunks}/{job.total_chunks} chunks · {job.percent():.0f}%"
+                        + (f" · ~{_fmt(eta)} left" if eta else "")
+                    )
+
+            if not written:
+                continue
+            merged, sr = audio.concat(written, gaps)
+            chapter_path = chapters_dir / f"{section['id']}.wav"
+            audio.write(chapter_path, merged, sr)
+            chapters.append(
+                {
+                    "id": section["id"],
+                    "heading": section.get("heading") or section["id"],
+                    "path": str(chapter_path),
+                    "seconds": round(len(merged) / sr, 1),
+                }
+            )
+            job.add_log(f"Finished {section['id']} ({_fmt(len(merged) / sr)})")
 
     if job.cancel:
         job.result = {"dir": str(job_dir), "partial": True, "chapters": chapters}

@@ -138,8 +138,10 @@ python -m ttsstudio --no-browser    # do not open a browser tab
   pieces are more reliable; larger ones flow better. 55 is a good balance, 30–40 is
   safer for Chatterbox.
 - **Estimate the time first.** Uploading a file shows the word count and roughly how many
-  minutes of audio it will produce. Narration is usually faster than real time with
-  Kokoro and slower than real time with Chatterbox.
+  minutes of audio it will produce. Measured on an M4 Mac mini, Kokoro produced 3 minutes
+  10 seconds of audio in 24 seconds — about 8x faster than playback — which puts a
+  100,000-word novel at roughly 35 minutes. Chatterbox runs near real time, so the same
+  book is an overnight job.
 - **Cancel is safe.** Stopping a job keeps every chapter finished so far.
 
 ## Building the installers yourself

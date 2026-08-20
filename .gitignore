@@ -28,3 +28,6 @@ packaging/icon.iconset/
 # Never commit secrets — the API key lives in the user's data folder
 .env
 settings.json
+
+# Release artifacts downloaded from CI
+ci-artifacts/

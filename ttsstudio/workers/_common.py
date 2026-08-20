@@ -1,15 +1,27 @@
-"""Shared post-processing for autoregressive TTS workers.
+"""Shared machinery for the TTS workers: the serve loop and post-processing.
 
-Chatterbox generates token by token, and two artefacts show up often enough to
-be worth fixing at the source: a stretch of near-silence before the first word,
-and a tail that re-speaks the last clause. Both are cheap to detect on the
-waveform and expensive to notice only after a six-hour audiobook has rendered.
+Workers run inside an engine's own virtualenv, so this module may only rely on
+numpy and the standard library.
 
-Imported by the worker scripts, which run inside an engine venv — so this may
-only rely on numpy.
+**Serve mode** is the reason narration is fast. Loading a model costs about four
+seconds, and a novel is on the order of two thousand chunks; paying that per
+chunk spends hours reloading weights that never changed. In serve mode the host
+starts one worker, it loads the model once, and then it answers a stream of
+requests over stdin/stdout until the job ends.
+
+**Post-processing** fixes two artefacts autoregressive models produce often
+enough to be worth handling at the source: near-silence before the first word,
+and a tail that re-speaks the last clause. Both are cheap to spot on the
+waveform and expensive to discover after a six-hour audiobook has rendered.
 """
 
 from __future__ import annotations
+
+import json
+import sys
+import traceback
+from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 
@@ -95,3 +107,95 @@ def postprocess(wave: np.ndarray, sr: int, *, trim_tail: bool = True) -> np.ndar
         if n:
             print(f"trimmed {n} repeating tail window(s)", flush=True)
     return normalize(wave)
+
+
+# --------------------------------------------------------------------------
+# Serve mode
+# --------------------------------------------------------------------------
+
+# One JSON object per line each way:
+#   host → worker   {"text": "...", "out": "/path/file.wav", ...}
+#                   {"cmd": "quit"}
+#   worker → host   {"ready": true}                     once, after model load
+#                   {"ok": true, "seconds": 12.3}       per request
+#                   {"ok": false, "error": "..."}       per request
+#
+# Only these messages may reach stdout. Model libraries print banners and
+# progress bars freely, so stdout is redirected to stderr for the duration and
+# replies are written to the original handle.
+
+
+def serve(load_model: Callable[[dict], object], generate: Callable[[object, dict], tuple]) -> int:
+    """Answer synthesis requests on stdin until told to quit.
+
+    ``load_model`` is called once with the first request, so the host can send
+    model options (voice, checkpoint) without them being fixed at spawn time.
+    ``generate`` returns ``(waveform, sample_rate)`` for one request.
+    """
+    import soundfile as sf
+
+    protocol_out = sys.stdout
+    sys.stdout = sys.stderr  # anything the model prints is diagnostics, not protocol
+
+    def reply(payload: dict) -> None:
+        protocol_out.write(json.dumps(payload) + "\n")
+        protocol_out.flush()
+
+    model = None
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError as exc:
+            reply({"ok": False, "error": f"bad request: {exc}"})
+            continue
+
+        if request.get("cmd") == "quit":
+            break
+
+        try:
+            if model is None:
+                model = load_model(request)
+                reply({"ready": True})
+
+            wave, sample_rate = generate(model, request)
+            out = Path(request["out"])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(out), wave, sample_rate, subtype="PCM_16")
+            reply({"ok": True, "seconds": round(len(wave) / sample_rate, 3)})
+        except Exception as exc:  # noqa: BLE001 — one bad chunk must not kill the worker
+            traceback.print_exc()
+            reply({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    return 0
+
+
+def run_cli_or_serve(
+    parser,
+    load_model: Callable[[dict], object],
+    generate: Callable[[object, dict], tuple],
+) -> int:
+    """Entry point shared by every worker.
+
+    With ``--serve`` the worker becomes a long-lived process. Without it, it
+    synthesises one file and exits — which keeps each worker independently
+    runnable from a shell, the quickest way to debug an engine.
+    """
+    import soundfile as sf
+
+    parser.add_argument("--serve", action="store_true", help="Answer requests on stdin")
+    args = parser.parse_args()
+
+    if args.serve:
+        return serve(load_model, generate)
+
+    request = {k: v for k, v in vars(args).items() if v is not None}
+    model = load_model(request)
+    wave, sample_rate = generate(model, request)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(out), wave, sample_rate, subtype="PCM_16")
+    print(f"OK {out.name} {len(wave) / sample_rate:.2f}s", flush=True)
+    return 0

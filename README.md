@@ -173,6 +173,13 @@ Edge TTS and ElevenLabs are cloud services, so text sent to them leaves your com
 definition; use an offline engine if that matters. The app binds to `127.0.0.1` only and
 rejects requests that do not come from your own machine.
 
+## Support
+
+TTS Studio is free and will stay free. If it saved you time and you'd like to say
+thanks, donations are welcome — never expected:
+
+- **USDT (TRC-20 / TRON):** `THbLKJvaxCTPTof4geg3PED6erHPVBKBAx`
+
 ## Credits
 
 Built on [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0),

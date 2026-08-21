@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import settings
+from . import net, settings
 
 ELEVENLABS_KEYS_URL = "https://elevenlabs.io/app/settings/api-keys"
 
@@ -78,7 +78,7 @@ def elevenlabs_voices() -> list[dict]:
         "https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key}
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=net.ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"ElevenLabs rejected the API key (HTTP {exc.code})") from exc
@@ -126,7 +126,7 @@ def synth_elevenlabs(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
+        with urllib.request.urlopen(req, timeout=180, context=net.ssl_context()) as resp:
             audio = resp.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:300]
@@ -145,7 +145,7 @@ def verify_elevenlabs_key(key: str) -> dict:
         "https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key.strip()}
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=net.ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return {"ok": False, "error": f"HTTP {exc.code} — key rejected"}

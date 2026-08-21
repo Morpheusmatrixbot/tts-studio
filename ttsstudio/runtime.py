@@ -29,7 +29,7 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-from . import paths
+from . import net, paths
 from .engines import Backend, backend_for
 
 PYTHON_VERSION = "3.12"
@@ -111,7 +111,7 @@ def _download(url: str, dest: Path, progress: Progress = _noop, *, label: str = 
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "TTS-Studio"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=60, context=net.ssl_context()) as resp:
         total = int(resp.headers.get("Content-Length") or 0)
         got = 0
         chunk_mb = 1024 * 256

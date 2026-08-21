@@ -5,3 +5,6 @@ numpy>=1.26
 soundfile>=0.13.0
 edge-tts>=7.0.0
 pypdf>=5.0.0
+# Explicit: a frozen build's Python has no OS-integrated CA store, so every
+# direct urlopen() call (engine downloads, ElevenLabs) needs certifi's bundle.
+certifi>=2024.1

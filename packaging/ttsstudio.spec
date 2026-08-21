@@ -14,7 +14,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
 APP_NAME = "TTS Studio"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 datas = [
     (str(ROOT / "ttsstudio" / "web"), "ttsstudio/web"),
@@ -24,12 +24,17 @@ datas = [
 ]
 # soundfile carries the libsndfile binary that also gives us MP3 export.
 datas += collect_data_files("soundfile")
+# certifi's CA bundle (cacert.pem) has no PyInstaller hook, so it is dropped
+# silently unless collected explicitly — without it, every direct HTTPS call
+# the frozen app makes (engine downloads, ElevenLabs) fails to verify TLS.
+datas += collect_data_files("certifi")
 
 hiddenimports = [
     "ttsstudio", "ttsstudio.server", "ttsstudio.jobs", "ttsstudio.runtime",
     "ttsstudio.engines", "ttsstudio.synth", "ttsstudio.audio", "ttsstudio.extract",
     "ttsstudio.voices", "ttsstudio.cloud", "ttsstudio.settings", "ttsstudio.paths",
-    "edge_tts", "pypdf", "soundfile", "numpy",
+    "ttsstudio.net", "ttsstudio.worker_pool",
+    "edge_tts", "pypdf", "soundfile", "numpy", "certifi",
 ]
 
 excludes = [
